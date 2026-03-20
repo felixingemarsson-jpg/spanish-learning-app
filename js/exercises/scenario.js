@@ -1,17 +1,13 @@
 /*
- * Interactive Video Scenario — negotiation of meaning via branching dialogue
- * Plays video clips (or falls back to text), pauses for learner input,
- * checks keywords, and navigates a node graph.
- *
- * UI: video stays visible as a frozen last-frame. Input slides up below it
- * so it feels like you're still in the scene, responding to the person.
+ * Interactive Video Scenario — full-screen immersive dialogue
+ * Video fills the screen. Subtitles overlay on video.
+ * Chat-style input bar at bottom with mic button (like ChatGPT/Claude).
  */
 
 const Scenario = (() => {
   let currentScenario = null;
   let currentNode = null;
   let attempts = 0;
-  let lastVideoSrc = null; // keep reference to freeze last frame
   const MAX_ATTEMPTS = 3;
 
   function getScenarios() {
@@ -53,31 +49,38 @@ const Scenario = (() => {
   function startScenario(scenario, container) {
     currentScenario = scenario;
     attempts = 0;
-    lastVideoSrc = null;
-    renderScenarioShell(container);
-    const firstNode = findNode(scenario.nodes[0].id);
-    currentNode = firstNode;
-    playNode(firstNode, container);
+
+    // Hide nav, go full-screen immersive
+    document.getElementById('nav').style.display = 'none';
+    container.classList.add('scenario-fullscreen');
+
+    container.innerHTML = `
+      <div class="scenario-screen" id="scenario-screen">
+        <div class="scenario-close" id="scenario-close">&times;</div>
+        <video class="scenario-fs-video" id="scenario-video" playsinline></video>
+        <div class="scenario-fs-fallback" id="scenario-fallback">
+          <div class="scenario-avatar">&#128100;</div>
+        </div>
+        <div class="scenario-fs-subtitle" id="scenario-subtitle"></div>
+        <div class="scenario-fs-chatbar" id="scenario-chatbar"></div>
+      </div>`;
+
+    document.getElementById('scenario-close').addEventListener('click', () => {
+      exitScenario(container);
+    });
+
+    currentNode = findNode(scenario.nodes[0].id);
+    playNode(currentNode, container);
+  }
+
+  function exitScenario(container) {
+    document.getElementById('nav').style.display = '';
+    container.classList.remove('scenario-fullscreen');
+    renderList(container);
   }
 
   function findNode(id) {
     return currentScenario.nodes.find(n => n.id === id);
-  }
-
-  // Persistent shell: header + video area + input area
-  function renderScenarioShell(container) {
-    container.innerHTML = `
-      <div class="scenario-header">
-        <span class="badge">${currentScenario.level}</span>
-        <span style="font-size:13px;color:var(--text-secondary);">${currentScenario.title}</span>
-      </div>
-      <div class="card scenario-video-card" id="scenario-stage">
-        <div class="scenario-text-fallback" id="scenario-visual">
-          <div class="scenario-avatar">&#128100;</div>
-        </div>
-        <div class="scenario-subtitle" id="scenario-subtitle"></div>
-      </div>
-      <div id="scenario-input-area"></div>`;
   }
 
   function navigateToNode(nodeId, container) {
@@ -85,13 +88,11 @@ const Scenario = (() => {
       showCompletion(container);
       return;
     }
-
     const node = findNode(nodeId);
     if (!node) {
       showCompletion(container);
       return;
     }
-
     currentNode = node;
     playNode(node, container);
   }
@@ -100,92 +101,64 @@ const Scenario = (() => {
     if (node.type === 'video') {
       playVideoNode(node, container);
     } else if (node.type === 'input') {
-      showInputOverlay(node, container);
+      showChatInput(node, container);
     }
   }
 
   function playVideoNode(node, container) {
-    const visual = document.getElementById('scenario-visual');
+    const video = document.getElementById('scenario-video');
+    const fallback = document.getElementById('scenario-fallback');
     const subtitle = document.getElementById('scenario-subtitle');
-    const inputArea = document.getElementById('scenario-input-area');
+    const chatbar = document.getElementById('scenario-chatbar');
 
-    // Clear input area while video plays
-    if (inputArea) inputArea.innerHTML = '';
+    // Hide chat bar during video
+    if (chatbar) chatbar.innerHTML = '';
 
     // Update subtitle
     if (subtitle) {
       subtitle.innerHTML = `
-        <div class="scenario-subtitle-target">${node.subtitle || ''}</div>
-        ${node.subtitle_en ? `<div class="scenario-subtitle-en">${node.subtitle_en}</div>` : ''}`;
-      subtitle.classList.add('scenario-fade-in');
-      setTimeout(() => subtitle.classList.remove('scenario-fade-in'), 300);
+        <div class="scenario-sub-target">${node.subtitle || ''}</div>
+        ${node.subtitle_en ? `<div class="scenario-sub-en">${node.subtitle_en}</div>` : ''}`;
     }
 
-    // Try to play video
-    if (node.video && visual) {
-      const stage = document.getElementById('scenario-stage');
-      // Replace visual area with video
-      const videoEl = document.createElement('video');
-      videoEl.className = 'scenario-video';
-      videoEl.id = 'scenario-video';
-      videoEl.setAttribute('playsinline', '');
-      videoEl.innerHTML = `<source src="${node.video}" type="video/mp4">`;
+    if (node.video && video) {
+      // Show video, hide fallback
+      video.style.display = 'block';
+      if (fallback) fallback.style.display = 'none';
 
-      // Swap in the video element
-      const oldVisual = document.getElementById('scenario-visual');
-      if (oldVisual) {
-        stage.replaceChild(videoEl, oldVisual);
-      } else {
-        const existingVideo = document.getElementById('scenario-video');
-        if (existingVideo) {
-          stage.replaceChild(videoEl, existingVideo);
-        } else {
-          stage.insertBefore(videoEl, subtitle);
-        }
-      }
+      video.src = node.video;
+      video.load();
 
-      // Give it an ID so we can freeze it later
-      videoEl.id = 'scenario-video';
-      lastVideoSrc = node.video;
+      video.onended = () => {
+        // Freeze on last frame — video stays visible
+        advanceFromVideo(node, container);
+      };
 
-      videoEl.addEventListener('error', () => {
-        // Video failed — show text fallback, use TTS
-        showFallbackVisual(stage, subtitle);
+      video.onerror = () => {
+        video.style.display = 'none';
+        if (fallback) fallback.style.display = 'flex';
         if (node.subtitle && TTS.isEnabled()) TTS.speak(node.subtitle);
         setTimeout(() => advanceFromVideo(node, container), 3000);
-      });
+      };
 
-      videoEl.addEventListener('ended', () => {
-        // Video finished — freeze on last frame (video stays visible paused)
-        advanceFromVideo(node, container);
-      });
-
-      videoEl.play().catch(() => {
-        // Autoplay blocked — add tap-to-play overlay
-        const playOverlay = document.createElement('div');
-        playOverlay.className = 'scenario-play-overlay';
-        playOverlay.innerHTML = '<div class="scenario-play-btn">&#9654;</div>';
-        stage.appendChild(playOverlay);
-        playOverlay.addEventListener('click', () => {
-          videoEl.play();
-          playOverlay.remove();
-        });
+      video.play().catch(() => {
+        // Autoplay blocked — show tap overlay
+        const chatbar = document.getElementById('scenario-chatbar');
+        if (chatbar) {
+          chatbar.innerHTML = `
+            <button class="scenario-tap-play" id="scenario-tap-play">Tap to play</button>`;
+          document.getElementById('scenario-tap-play').addEventListener('click', () => {
+            video.play();
+            chatbar.innerHTML = '';
+          });
+        }
       });
     } else {
-      // No video — text-only with TTS
+      // No video file — text-only with avatar
+      video.style.display = 'none';
+      if (fallback) fallback.style.display = 'flex';
       if (node.subtitle && TTS.isEnabled()) TTS.speak(node.subtitle);
       setTimeout(() => advanceFromVideo(node, container), 3000);
-    }
-  }
-
-  function showFallbackVisual(stage, subtitle) {
-    const existing = document.getElementById('scenario-video');
-    if (existing) {
-      const fallback = document.createElement('div');
-      fallback.className = 'scenario-text-fallback';
-      fallback.id = 'scenario-visual';
-      fallback.innerHTML = '<div class="scenario-avatar">&#128100;</div>';
-      stage.replaceChild(fallback, existing);
     }
   }
 
@@ -197,33 +170,30 @@ const Scenario = (() => {
     }
   }
 
-  function showInputOverlay(node, container) {
+  function showChatInput(node, container) {
     attempts = 0;
-    renderInputUI(node, container);
+    renderChatBar(node, container);
   }
 
-  function renderInputUI(node, container) {
+  function renderChatBar(node, container) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const hasMic = !!SpeechRecognition;
-    const inputArea = document.getElementById('scenario-input-area');
-    if (!inputArea) return;
+    const chatbar = document.getElementById('scenario-chatbar');
+    if (!chatbar) return;
 
-    // Slide up the input below the frozen video
-    inputArea.innerHTML = `
-      <div class="scenario-response-bar">
-        ${node.prompt ? `<div class="scenario-prompt">${node.prompt}</div>` : ''}
-        ${attempts > 0 && node.hint ? `<div class="scenario-hint">Hint: ${node.hint}</div>` : ''}
-        <div class="input-row">
-          <input class="input" type="text" id="scenario-input" placeholder="Type your response..."
-                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-          <button class="btn" id="scenario-submit" style="width:auto;padding:14px 20px;">&#10148;</button>
-          ${hasMic ? `<button class="btn btn-ghost scenario-mic-btn" id="scenario-mic" style="width:auto;padding:14px 16px;">&#127908;</button>` : ''}
-        </div>
-        <div id="scenario-feedback"></div>
-      </div>`;
+    chatbar.innerHTML = `
+      ${node.prompt ? `<div class="scenario-chat-prompt">${node.prompt}</div>` : ''}
+      ${attempts > 0 && node.hint ? `<div class="scenario-chat-hint">${node.hint}</div>` : ''}
+      <div class="scenario-chat-row">
+        <input class="scenario-chat-input" type="text" id="scenario-input" placeholder="Type your response..."
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button class="scenario-send-btn" id="scenario-submit">&#10148;</button>
+        ${hasMic ? `<button class="scenario-mic-btn" id="scenario-mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>` : ''}
+      </div>
+      <div id="scenario-feedback"></div>`;
 
-    inputArea.classList.add('scenario-input-slide-in');
-    setTimeout(() => inputArea.classList.remove('scenario-input-slide-in'), 300);
+    chatbar.classList.add('scenario-chatbar-in');
+    setTimeout(() => chatbar.classList.remove('scenario-chatbar-in'), 300);
 
     const input = document.getElementById('scenario-input');
     input.focus();
@@ -237,7 +207,7 @@ const Scenario = (() => {
     document.getElementById('scenario-submit').addEventListener('click', submit);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 
-    // Mic button
+    // Mic
     const micBtn = document.getElementById('scenario-mic');
     if (micBtn && hasMic) {
       micBtn.addEventListener('click', () => {
@@ -246,26 +216,14 @@ const Scenario = (() => {
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        micBtn.classList.add('scenario-mic-active');
-        micBtn.textContent = '...';
+        micBtn.classList.add('recording');
 
         recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          input.value = transcript;
-          micBtn.innerHTML = '&#127908;';
-          micBtn.classList.remove('scenario-mic-active');
+          input.value = event.results[0][0].transcript;
+          micBtn.classList.remove('recording');
         };
-
-        recognition.onerror = () => {
-          micBtn.innerHTML = '&#127908;';
-          micBtn.classList.remove('scenario-mic-active');
-        };
-
-        recognition.onend = () => {
-          micBtn.innerHTML = '&#127908;';
-          micBtn.classList.remove('scenario-mic-active');
-        };
-
+        recognition.onerror = () => micBtn.classList.remove('recording');
+        recognition.onend = () => micBtn.classList.remove('recording');
         recognition.start();
       });
     }
@@ -278,8 +236,7 @@ const Scenario = (() => {
 
     for (const group of requiredGroups) {
       const alternatives = group.split('|');
-      const found = alternatives.some(kw => normalizedInput.includes(kw.toLowerCase()));
-      if (!found) {
+      if (!alternatives.some(kw => normalizedInput.includes(kw.toLowerCase()))) {
         allRequired = false;
         break;
       }
@@ -290,32 +247,23 @@ const Scenario = (() => {
     } else {
       attempts++;
       if (attempts >= MAX_ATTEMPTS) {
-        // Show model answer and advance
         const fb = document.getElementById('scenario-feedback');
         if (fb) {
-          fb.innerHTML = `
-            <div class="feedback wrong" style="margin-top:8px;">
-              <div class="feedback-label">Model answer</div>
-              <div class="feedback-answer">${node.hint || 'See the hint above'}</div>
-            </div>`;
+          fb.innerHTML = `<div class="scenario-model-answer">${node.hint || ''}</div>`;
         }
-
-        setTimeout(() => {
-          navigateToNode(node.success_next, container);
-        }, 2500);
+        setTimeout(() => navigateToNode(node.success_next, container), 2500);
+      } else if (node.fail_next) {
+        navigateToNode(node.fail_next, container);
       } else {
-        // Navigate to confusion/fail node
-        if (node.fail_next) {
-          navigateToNode(node.fail_next, container);
-        } else {
-          // No fail node — re-show input with hint
-          renderInputUI(node, container);
-        }
+        renderChatBar(node, container);
       }
     }
   }
 
   function showCompletion(container) {
+    document.getElementById('nav').style.display = '';
+    container.classList.remove('scenario-fullscreen');
+
     container.innerHTML = `
       <div class="card" style="text-align:center;padding:32px 24px;">
         <div style="font-size:48px;margin-bottom:16px;">&#127881;</div>
