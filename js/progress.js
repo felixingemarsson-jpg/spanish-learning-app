@@ -12,6 +12,8 @@ const Progress = (() => {
     const cardCounts = SRSEngine.getCardCounts();
     const cards = SRSEngine.loadCards();
 
+    const weakCategories = SRSEngine.getWeakCategories();
+
     // Theme accuracy
     const themes = DATA.getAllThemes();
     const themeStats = {};
@@ -92,6 +94,19 @@ const Progress = (() => {
           `).join('')}
         </div>
       </div>
+
+      ${weakCategories.length > 0 ? `
+      <div class="section-label" style="margin-top:24px;">Weak Spots</div>
+      ${weakCategories.map(w => `
+        <div class="progress-row">
+          <div class="progress-label" style="color:var(--error);">${w.category.replace(/_/g, ' ')}</div>
+          <div class="progress-track">
+            <div class="progress-fill" style="width:${w.accuracy}%;background:var(--error);"></div>
+          </div>
+          <div class="progress-pct" style="color:var(--error);">${w.accuracy}%</div>
+        </div>
+      `).join('')}
+      ` : ''}
 
       <div class="section-label" style="margin-top:24px;">Vocabulary by Theme</div>
       ${themes.map(theme => `

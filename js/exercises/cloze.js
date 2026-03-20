@@ -136,32 +136,38 @@ const Cloze = (() => {
   }
 
   function checkAnswer(container, item, userAnswer) {
-    const normalizedUser = normalize(userAnswer);
-    const normalizedCorrect = normalize(item.blank);
-    const isCorrect = normalizedUser === normalizedCorrect;
+    const grade = SRSEngine.gradeAnswer(userAnswer, item.blank);
+    // Downgrade to Hard if hint was used
+    const finalRating = (grade.match === 'exact' && hintLevel > 0) ? FSRS.Rating.Hard : grade.rating;
+    SRSEngine.reviewCard(item.id, finalRating);
 
-    const rating = isCorrect
-      ? (hintLevel === 0 ? FSRS.Rating.Good : FSRS.Rating.Hard)
-      : FSRS.Rating.Again;
-    SRSEngine.reviewCard(item.id, rating);
+    if (grade.match === 'accent') SRSEngine.recordErrorPattern('accent_errors', false);
+    else if (grade.match === 'wrong') SRSEngine.recordErrorPattern('spelling_errors', false);
+    else SRSEngine.recordErrorPattern('spelling_errors', true);
 
     const inputRow = container.querySelector('.input-row');
     if (inputRow) inputRow.remove();
 
-    // Update the blank display
     const display = document.getElementById('cloze-display');
     if (display) {
       display.textContent = item.blank;
-      display.style.color = isCorrect ? 'var(--success)' : 'var(--error)';
+      display.style.color = grade.match === 'wrong' ? 'var(--error)' : grade.match === 'accent' ? 'var(--accent)' : 'var(--success)';
     }
 
     const feedbackEl = document.getElementById('cloze-feedback');
 
-    if (isCorrect) {
+    if (grade.match === 'exact') {
       feedbackEl.innerHTML = `
         <div class="feedback correct">
           <div class="feedback-label">${hintLevel > 0 ? 'Correct (with hint)' : 'Correct!'}</div>
           <div class="feedback-answer">${item.blank}</div>
+        </div>`;
+    } else if (grade.match === 'accent' || grade.match === 'close') {
+      feedbackEl.innerHTML = `
+        <div class="feedback almost">
+          <div class="feedback-label">Almost!</div>
+          <div class="feedback-answer">${item.blank}</div>
+          <div class="feedback-explanation">${grade.details}</div>
         </div>`;
     } else {
       feedbackEl.innerHTML = `

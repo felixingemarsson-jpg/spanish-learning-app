@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#1a1a2e">
   <title>Language Learning</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -36,6 +37,7 @@
     <main id="main"></main>
   </div>
 
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
   <script src="js/fsrs.js"></script>
   <script src="js/language.js"></script>
   <script src="js/tts.js"></script>
@@ -45,6 +47,11 @@
   <script src="js/exercises/translation.js"></script>
   <script src="js/exercises/cloze.js"></script>
   <script src="js/exercises/grammar-quiz.js"></script>
+  <script src="js/exercises/dictation.js"></script>
+  <script src="js/exercises/reading.js"></script>
+  <script src="js/exercises/word-order.js"></script>
+  <script src="js/exercises/pronunciation.js"></script>
+  <script src="js/exercises/smart-session.js"></script>
   <script src="js/progress.js"></script>
   <script src="js/github-sync.js"></script>
   <!-- Data file loaded dynamically based on selected language -->
@@ -54,9 +61,19 @@
       var script = document.createElement('script');
       script.src = 'js/data-' + lang + '.js';
       script.onload = function() {
-        var appScript = document.createElement('script');
-        appScript.src = 'js/app.js';
-        document.body.appendChild(appScript);
+        // Load reading passages (optional — may not exist for all languages)
+        var readingsScript = document.createElement('script');
+        readingsScript.src = 'js/data-readings-' + lang + '.js';
+        readingsScript.onload = readingsScript.onerror = function() {
+          // Wire readings into DATA if they loaded
+          if (typeof DATA_READINGS !== 'undefined' && DATA) {
+            DATA.readings = DATA_READINGS;
+          }
+          var appScript = document.createElement('script');
+          appScript.src = 'js/app.js';
+          document.body.appendChild(appScript);
+        };
+        document.body.appendChild(readingsScript);
       };
       document.body.appendChild(script);
     })();

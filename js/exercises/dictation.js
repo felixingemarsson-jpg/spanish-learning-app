@@ -1,17 +1,42 @@
 /*
- * Translation — EN→ES sentence production with fuzzy matching
+ * Dictation — Listen and type what you hear
  */
 
-const Translation = (() => {
+const Dictation = (() => {
   let queue = [];
   let currentIndex = 0;
   let answered = false;
 
-  function render(container) {
+  function generateQueue(count = 10) {
     const vocab = DATA.getAllVocab();
-    // Shuffle
-    queue = vocab.slice().sort(() => Math.random() - 0.5).slice(0, 15);
+    return vocab.slice().sort(() => Math.random() - 0.5).slice(0, count);
+  }
+
+  function render(container) {
+    if (!TTS.isEnabled()) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">&#128266;</div>
+          <div class="empty-state-text">Enable TTS in Settings for dictation exercises</div>
+          <div style="margin-top:16px;">
+            <button class="btn btn-sm" onclick="App.navigate('settings')">Settings</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    queue = generateQueue(10);
     currentIndex = 0;
+
+    if (queue.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">&#128266;</div>
+          <div class="empty-state-text">No vocabulary available for dictation</div>
+        </div>`;
+      return;
+    }
+
     showItem(container);
   }
 
@@ -20,9 +45,9 @@ const Translation = (() => {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">&#10004;</div>
-          <div class="empty-state-text">Translation session complete!</div>
+          <div class="empty-state-text">Dictation session complete!</div>
           <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
-            <button class="btn btn-sm btn-secondary" onclick="Translation.render(document.getElementById('main'))">Again</button>
+            <button class="btn btn-sm btn-secondary" onclick="Dictation.render(document.getElementById('main'))">Again</button>
             <button class="btn btn-sm" onclick="App.navigate('practice')">Back</button>
           </div>
         </div>`;
@@ -36,24 +61,30 @@ const Translation = (() => {
       <div class="session-counter">${currentIndex + 1} / ${queue.length}</div>
 
       <div class="card">
-        <div class="section-label">Translate to Spanish</div>
-        <div style="font-size:20px;font-weight:700;margin-bottom:8px;">${item.english}</div>
-        <div style="font-size:13px;color:var(--text-secondary);">
+        <div class="section-label">Listen &amp; Type</div>
+        <div style="text-align:center;margin-bottom:16px;">
+          <div id="tts-container"></div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);text-align:center;">
           <span class="badge">${item.theme}</span>
-          <span style="margin-left:8px;">${item.context || ''}</span>
         </div>
       </div>
 
       <div class="input-row">
-        <input class="input" type="text" id="trans-input" placeholder="Type in Spanish..."
+        <input class="input" type="text" id="dict-input" placeholder="Type what you hear..."
                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-        <button class="btn" id="trans-submit">Check</button>
+        <button class="btn" id="dict-submit">Check</button>
       </div>
 
-      <div id="trans-feedback" style="margin-top:12px;"></div>`;
+      <div id="dict-feedback" style="margin-top:12px;"></div>`;
 
-    const input = document.getElementById('trans-input');
-    const submitBtn = document.getElementById('trans-submit');
+    // Render replay button
+    TTS.renderButton(item.spanish, document.getElementById('tts-container'));
+
+    // Auto-play on show
+    TTS.speak(item.spanish);
+
+    const input = document.getElementById('dict-input');
     input.focus();
 
     const submit = () => {
@@ -64,7 +95,7 @@ const Translation = (() => {
       checkAnswer(container, item, userAnswer);
     };
 
-    submitBtn.addEventListener('click', submit);
+    document.getElementById('dict-submit').addEventListener('click', submit);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }
 
@@ -72,42 +103,47 @@ const Translation = (() => {
     const grade = SRSEngine.gradeAnswer(userAnswer, item.spanish);
     SRSEngine.reviewCard(item.id, grade.rating);
 
-    if (grade.match === 'accent') SRSEngine.recordErrorPattern('accent_errors', false);
-    else if (grade.match === 'wrong') SRSEngine.recordErrorPattern('spelling_errors', false);
-    else SRSEngine.recordErrorPattern('spelling_errors', true);
-    SRSEngine.recordThemeAccuracy(item.theme, grade.match !== 'wrong');
+    // Record accent errors specifically
+    if (grade.match === 'accent') {
+      SRSEngine.recordErrorPattern('accent_errors', false);
+    } else {
+      SRSEngine.recordErrorPattern('accent_errors', grade.match !== 'wrong');
+    }
 
     const inputRow = container.querySelector('.input-row');
     if (inputRow) inputRow.remove();
 
-    const feedbackEl = document.getElementById('trans-feedback');
+    const feedbackEl = document.getElementById('dict-feedback');
+    const isCorrect = grade.match === 'exact';
+    const isClose = grade.match === 'accent' || grade.match === 'close';
 
-    if (grade.match === 'exact') {
+    if (isCorrect) {
       feedbackEl.innerHTML = `
         <div class="feedback correct">
           <div class="feedback-label">Perfect!</div>
           <div class="feedback-answer">${item.spanish}</div>
         </div>`;
-    } else if (grade.match === 'accent' || grade.match === 'close') {
+    } else if (isClose) {
       feedbackEl.innerHTML = `
-        <div class="feedback almost">
-          <div class="feedback-label">Almost!</div>
+        <div class="feedback correct">
+          <div class="feedback-label">Close!</div>
           <div class="feedback-answer">${item.spanish}</div>
           <div class="feedback-explanation">${grade.details}</div>
+          <div class="feedback-explanation">Your answer: "${userAnswer}"</div>
         </div>`;
     } else {
       feedbackEl.innerHTML = `
         <div class="feedback wrong">
-          <div class="feedback-label">Not quite</div>
+          <div class="feedback-label">Incorrect</div>
           <div class="feedback-answer">
             <span style="text-decoration:line-through;color:var(--error);">${userAnswer}</span>
             &rarr; <span style="color:var(--success);">${item.spanish}</span>
           </div>
-          <div class="feedback-explanation">${item.grammar_notes || ''}</div>
+          <div class="feedback-explanation">${item.english}</div>
         </div>`;
     }
 
-    // TTS
+    // TTS replay in feedback
     const ttsContainer = document.createElement('div');
     ttsContainer.style.marginTop = '8px';
     feedbackEl.appendChild(ttsContainer);
@@ -130,41 +166,6 @@ const Translation = (() => {
         advance();
       }
     });
-  }
-
-  function normalize(str) {
-    return str.toLowerCase().trim()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, ' ');
-  }
-
-  function fuzzyMatch(userAnswer, correct) {
-    const a = normalize(userAnswer);
-    const b = normalize(correct);
-    if (a === b) return 1;
-
-    // Levenshtein distance
-    const matrix = [];
-    for (let i = 0; i <= a.length; i++) {
-      matrix[i] = [i];
-      for (let j = 1; j <= b.length; j++) {
-        if (i === 0) { matrix[i][j] = j; continue; }
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-        );
-      }
-    }
-
-    const dist = matrix[a.length][b.length];
-    return 1 - dist / Math.max(a.length, b.length);
-  }
-
-  function highlightDiff(userAnswer, correct) {
-    return `<span style="text-decoration:line-through;color:var(--error);">${userAnswer}</span>
-            &rarr; <span style="color:var(--success);">${correct}</span>`;
   }
 
   return { render };

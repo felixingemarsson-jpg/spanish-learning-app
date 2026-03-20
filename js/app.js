@@ -54,6 +54,10 @@ const App = (() => {
       case 'translation': Translation.render(main); break;
       case 'cloze': Cloze.render(main); break;
       case 'grammar': GrammarQuiz.render(main); break;
+      case 'dictation': typeof Dictation !== 'undefined' ? Dictation.render(main) : renderPracticeMenu(main); break;
+      case 'reading': typeof Reading !== 'undefined' ? Reading.render(main) : renderPracticeMenu(main); break;
+      case 'word-order': typeof WordOrder !== 'undefined' ? WordOrder.render(main) : renderPracticeMenu(main); break;
+      case 'smart-session': typeof SmartSession !== 'undefined' ? SmartSession.render(main) : Flashcards.render(main); break;
       default: renderDashboard(main);
     }
 
@@ -105,11 +109,11 @@ const App = (() => {
         </div>
       </div>
 
-      <button class="btn" onclick="App.navigate('flashcards')" ${study.total === 0 ? 'disabled' : ''}>
-        ${study.total > 0 ? `Start Review (${study.total} cards)` : 'All caught up!'}
+      <button class="btn" onclick="App.navigate('smart-session')" ${study.total === 0 ? 'disabled' : ''}>
+        ${study.total > 0 ? `Start Session (${study.total} cards)` : 'All caught up!'}
       </button>
       <button class="btn btn-secondary" style="margin-top:8px;" onclick="App.navigate('practice')">
-        Practice
+        Individual Practice
       </button>
 
       ${GitHubSync.isEnabled() ? `
@@ -166,25 +170,43 @@ const App = (() => {
         <div class="practice-option-desc">Type verb conjugations with interleaved tenses. ${DATA.verbs.length} verbs across 3 tenses.</div>
       </div>
 
+      <div class="practice-option" onclick="App.navigate('flashcards')">
+        <div class="practice-option-title">Production Flashcards</div>
+        <div class="practice-option-desc">See English, type the target language. FSRS-scheduled.</div>
+      </div>
+
       <div class="practice-option" onclick="App.navigate('translation')">
         <div class="practice-option-title">Sentence Translation</div>
-        <div class="practice-option-desc">Translate English sentences to Spanish. Fuzzy matching accepts minor errors.</div>
+        <div class="practice-option-desc">Translate full English sentences with accent-aware grading.</div>
       </div>
 
       <div class="practice-option" onclick="App.navigate('cloze')">
         <div class="practice-option-title">Fill-in-the-Blank</div>
-        <div class="practice-option-desc">Complete Spanish sentences with the missing word. Hints available.</div>
+        <div class="practice-option-desc">Complete sentences with the missing word. Hints available.</div>
       </div>
 
+      <div class="practice-option" onclick="App.navigate('word-order')">
+        <div class="practice-option-title">Word Order</div>
+        <div class="practice-option-desc">Tap shuffled words into the correct sentence order.</div>
+      </div>
+
+      ${TTS.isEnabled() ? `
+      <div class="practice-option" onclick="App.navigate('dictation')">
+        <div class="practice-option-title">Dictation</div>
+        <div class="practice-option-desc">Listen and type what you hear. Trains listening + spelling.</div>
+      </div>` : ''}
+
+      ${typeof DATA_READINGS !== 'undefined' && DATA_READINGS.length > 0 ? `
+      <div class="practice-option" onclick="App.navigate('reading')">
+        <div class="practice-option-title">Reading</div>
+        <div class="practice-option-desc">Short graded passages with comprehension questions.</div>
+      </div>` : ''}
+
+      ${DATA.grammarRules && DATA.grammarRules.length > 0 ? `
       <div class="practice-option" onclick="App.navigate('grammar')">
-        <div class="practice-option-title">Grammar Quiz</div>
-        <div class="practice-option-desc">Multiple choice on grammar rules: ser/estar, por/para, preterite/imperfect, and more.</div>
-      </div>
-
-      <div class="practice-option" onclick="App.navigate('flashcards')">
-        <div class="practice-option-title">Flashcards</div>
-        <div class="practice-option-desc">FSRS-scheduled vocabulary review. Cards come back at optimal intervals.</div>
-      </div>`;
+        <div class="practice-option-title">Grammar</div>
+        <div class="practice-option-desc">Type the correct form — ser/estar, por/para, tenses, and more.</div>
+      </div>` : ''}`;
   }
 
   function renderSettings(container) {

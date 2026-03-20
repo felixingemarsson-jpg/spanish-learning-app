@@ -290,12 +290,114 @@ const SRSEngine = (() => {
     return seeded;
   }
 
+  // ── Accent-Aware Grading ──
+  // Returns: { match: 'exact'|'accent'|'wrong', rating: FSRS.Rating, details: string }
+  function gradeAnswer(userAnswer, correctAnswer) {
+    const userTrimmed = userAnswer.trim();
+    const correctTrimmed = correctAnswer.trim();
+
+    // Exact match (case-insensitive)
+    if (userTrimmed.toLowerCase() === correctTrimmed.toLowerCase()) {
+      return { match: 'exact', rating: FSRS.Rating.Good, details: '' };
+    }
+
+    // Normalize: strip accents for comparison
+    const stripAccents = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const userNorm = stripAccents(userTrimmed);
+    const correctNorm = stripAccents(correctTrimmed);
+
+    if (userNorm === correctNorm) {
+      // Same word, wrong accents
+      return {
+        match: 'accent',
+        rating: FSRS.Rating.Hard,
+        details: `Watch the accent: ${correctTrimmed}`,
+      };
+    }
+
+    // Fuzzy match for close answers (Levenshtein)
+    const dist = levenshtein(userNorm, correctNorm);
+    const similarity = 1 - dist / Math.max(userNorm.length, correctNorm.length);
+
+    if (similarity >= 0.85) {
+      return {
+        match: 'close',
+        rating: FSRS.Rating.Hard,
+        details: `Close! Expected: ${correctTrimmed}`,
+      };
+    }
+
+    return { match: 'wrong', rating: FSRS.Rating.Again, details: '' };
+  }
+
+  function levenshtein(a, b) {
+    const m = [];
+    for (let i = 0; i <= a.length; i++) {
+      m[i] = [i];
+      for (let j = 1; j <= b.length; j++) {
+        if (i === 0) { m[i][j] = j; continue; }
+        m[i][j] = Math.min(
+          m[i - 1][j] + 1,
+          m[i][j - 1] + 1,
+          m[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+        );
+      }
+    }
+    return m[a.length][b.length];
+  }
+
+  // ── Error Pattern Tracking ──
+  const ERROR_KEY = () => Language.storageKey('error-patterns');
+
+  function getErrorPatterns() {
+    const stored = localStorage.getItem(ERROR_KEY());
+    return stored ? JSON.parse(stored) : {
+      accent_errors: { total: 0, count: 0 },
+      tense_confusion: { total: 0, count: 0 },
+      word_order_errors: { total: 0, count: 0 },
+      spelling_errors: { total: 0, count: 0 },
+      by_theme: {},
+    };
+  }
+
+  function recordErrorPattern(category, correct) {
+    const patterns = getErrorPatterns();
+    if (!patterns[category]) patterns[category] = { total: 0, count: 0 };
+    patterns[category].total++;
+    if (!correct) patterns[category].count++;
+    localStorage.setItem(ERROR_KEY(), JSON.stringify(patterns));
+  }
+
+  function recordThemeAccuracy(theme, correct) {
+    const patterns = getErrorPatterns();
+    if (!patterns.by_theme[theme]) patterns.by_theme[theme] = { total: 0, correct: 0 };
+    patterns.by_theme[theme].total++;
+    if (correct) patterns.by_theme[theme].correct++;
+    localStorage.setItem(ERROR_KEY(), JSON.stringify(patterns));
+  }
+
+  function getWeakCategories() {
+    const patterns = getErrorPatterns();
+    const weak = [];
+    for (const cat of ['accent_errors', 'tense_confusion', 'word_order_errors', 'spelling_errors']) {
+      const p = patterns[cat];
+      if (p && p.total >= 5) {
+        const accuracy = Math.round(((p.total - p.count) / p.total) * 100);
+        if (accuracy < 80) {
+          weak.push({ category: cat, accuracy, total: p.total, errors: p.count });
+        }
+      }
+    }
+    return weak.sort((a, b) => a.accuracy - b.accuracy);
+  }
+
   // Export for GitHub sync
   function exportProgress() {
     return {
       cards: loadCards(),
       stats: getStats(),
       settings: getSettings(),
+      errorPatterns: getErrorPatterns(),
       exportedAt: new Date().toISOString(),
     };
   }
@@ -318,6 +420,7 @@ const SRSEngine = (() => {
     getOrCreateCard, reviewCard, seedKnownCards,
     getSchedulingOptions, getDueCards, getNewCards, getStudyQueue,
     getStats, getTodayStats, getStreak, getAccuracy, getCardCounts,
+    gradeAnswer, recordErrorPattern, recordThemeAccuracy, getErrorPatterns, getWeakCategories,
     exportProgress, importProgress,
     loadCards, saveCards,
   };

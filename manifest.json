@@ -1,0 +1,15 @@
+{
+  "name": "Language Learning",
+  "short_name": "LangLearn",
+  "start_url": "/spanish-learning-app/",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

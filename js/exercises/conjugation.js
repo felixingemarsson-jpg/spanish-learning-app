@@ -9,20 +9,46 @@ const Conjugation = (() => {
   let answered = false;
 
   function generateQueue(count = 15) {
+    // SRS-driven: use due verb cards, fall back to random if none due
+    const allVerbIds = DATA.getAllVerbCardIds();
+    if (allVerbIds.length === 0) return []; // no verbs for this language
+
+    const study = SRSEngine.getStudyQueue(allVerbIds);
+    const dueIds = [...study.due, ...study.new].slice(0, count);
+
     const queue = [];
-    for (let i = 0; i < count; i++) {
+    for (const id of dueIds) {
+      // Parse verb card ID: verb-{infinitive}-{tense}-{pronoun}
+      const parts = id.split('-');
+      if (parts.length < 4) continue;
+      const infinitive = parts[1];
+      const tense = parts[2];
+      const pronoun = parts[3];
+      const verb = DATA.verbs.find(v => v.infinitive === infinitive);
+      if (!verb || !verb.tenses[tense] || !verb.tenses[tense][pronoun]) continue;
+      queue.push({ verb, tense, pronoun, answer: verb.tenses[tense][pronoun], cardId: id });
+    }
+
+    // If not enough due cards, pad with random (still interleaved)
+    while (queue.length < count) {
       const verb = DATA.getRandomVerb();
+      if (!verb) break;
       const tense = DATA.getRandomTense();
       const pronoun = DATA.getRandomPronoun();
-      const answer = verb.tenses[tense][pronoun];
-      if (answer) {
-        queue.push({ verb, tense, pronoun, answer });
-      }
+      if (!verb.tenses[tense] || !verb.tenses[tense][pronoun]) continue;
+      const cardId = `verb-${verb.infinitive}-${tense}-${pronoun}`;
+      if (queue.some(q => q.cardId === cardId)) continue;
+      queue.push({ verb, tense, pronoun, answer: verb.tenses[tense][pronoun], cardId });
     }
+
     return queue;
   }
 
   function render(container) {
+    if (!DATA.verbs || DATA.verbs.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-state-text">No verb data for this language</div></div>`;
+      return;
+    }
     drillQueue = generateQueue(15);
     currentIndex = 0;
     showDrill(container);
@@ -95,21 +121,31 @@ const Conjugation = (() => {
   }
 
   function showFeedback(container, item, userAnswer, cardId) {
-    const correct = normalize(userAnswer) === normalize(item.answer);
-    const rating = correct ? FSRS.Rating.Good : FSRS.Rating.Again;
-    SRSEngine.reviewCard(cardId, rating);
+    const grade = SRSEngine.gradeAnswer(userAnswer, item.answer);
+    SRSEngine.reviewCard(cardId, grade.rating);
 
-    // Replace input row with feedback (removes the input so Enter can't re-fire)
+    // Track error patterns
+    if (grade.match === 'accent') SRSEngine.recordErrorPattern('accent_errors', false);
+    else if (grade.match === 'wrong') SRSEngine.recordErrorPattern('tense_confusion', false);
+    else SRSEngine.recordErrorPattern('tense_confusion', true);
+
     const inputRow = container.querySelector('.input-row');
     if (inputRow) inputRow.remove();
 
     const feedbackEl = document.getElementById('conj-feedback');
 
-    if (correct) {
+    if (grade.match === 'exact') {
       feedbackEl.innerHTML = `
         <div class="feedback correct">
           <div class="feedback-label">Correct</div>
           <div class="feedback-answer">${item.answer}</div>
+        </div>`;
+    } else if (grade.match === 'accent' || grade.match === 'close') {
+      feedbackEl.innerHTML = `
+        <div class="feedback almost">
+          <div class="feedback-label">Almost!</div>
+          <div class="feedback-answer">${item.answer}</div>
+          <div class="feedback-explanation">${grade.details}</div>
         </div>`;
     } else {
       const explanation = getPatternExplanation(item);
