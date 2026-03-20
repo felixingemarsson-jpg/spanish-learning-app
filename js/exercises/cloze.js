@@ -145,6 +145,9 @@ const Cloze = (() => {
       : FSRS.Rating.Again;
     SRSEngine.reviewCard(item.id, rating);
 
+    const inputRow = container.querySelector('.input-row');
+    if (inputRow) inputRow.remove();
+
     // Update the blank display
     const display = document.getElementById('cloze-display');
     if (display) {
@@ -176,17 +179,17 @@ const Cloze = (() => {
     nextBtn.className = 'btn btn-secondary';
     nextBtn.style.marginTop = '12px';
     nextBtn.textContent = 'Next';
-    nextBtn.addEventListener('click', () => {
-      currentIndex++;
-      showItem(container);
-    });
+    const advance = () => { currentIndex++; showItem(container); };
+    nextBtn.addEventListener('click', advance);
     feedbackEl.appendChild(nextBtn);
+    setTimeout(() => nextBtn.focus(), 150);
 
+    let canAdvance = false;
+    setTimeout(() => { canAdvance = true; }, 100);
     document.addEventListener('keydown', function handler(e) {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && canAdvance) {
         document.removeEventListener('keydown', handler);
-        currentIndex++;
-        showItem(container);
+        advance();
       }
     });
   }

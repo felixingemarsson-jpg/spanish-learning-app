@@ -134,17 +134,17 @@ const GrammarQuiz = (() => {
     nextBtn.className = 'btn btn-secondary';
     nextBtn.style.marginTop = '12px';
     nextBtn.textContent = currentIndex + 1 >= queue.length ? 'Finish' : 'Next';
-    nextBtn.addEventListener('click', () => {
-      currentIndex++;
-      showQuestion(container);
-    });
+    const advance = () => { currentIndex++; showQuestion(container); };
+    nextBtn.addEventListener('click', advance);
     feedbackEl.appendChild(nextBtn);
+    setTimeout(() => nextBtn.focus(), 150);
 
+    let canAdvance = false;
+    setTimeout(() => { canAdvance = true; }, 100);
     document.addEventListener('keydown', function handler(e) {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && canAdvance) {
         document.removeEventListener('keydown', handler);
-        currentIndex++;
-        showQuestion(container);
+        advance();
       }
     });
   }

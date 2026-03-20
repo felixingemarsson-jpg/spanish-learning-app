@@ -99,6 +99,10 @@ const Conjugation = (() => {
     const rating = correct ? FSRS.Rating.Good : FSRS.Rating.Again;
     SRSEngine.reviewCard(cardId, rating);
 
+    // Replace input row with feedback (removes the input so Enter can't re-fire)
+    const inputRow = container.querySelector('.input-row');
+    if (inputRow) inputRow.remove();
+
     const feedbackEl = document.getElementById('conj-feedback');
 
     if (correct) {
@@ -108,7 +112,6 @@ const Conjugation = (() => {
           <div class="feedback-answer">${item.answer}</div>
         </div>`;
     } else {
-      // Build explanation of the pattern
       const explanation = getPatternExplanation(item);
       feedbackEl.innerHTML = `
         <div class="feedback wrong">
@@ -132,18 +135,18 @@ const Conjugation = (() => {
     nextBtn.className = 'btn btn-secondary';
     nextBtn.style.marginTop = '12px';
     nextBtn.textContent = 'Next';
-    nextBtn.addEventListener('click', () => {
-      currentIndex++;
-      showDrill(container);
-    });
+    const advance = () => { currentIndex++; showDrill(container); };
+    nextBtn.addEventListener('click', advance);
     feedbackEl.appendChild(nextBtn);
+    setTimeout(() => nextBtn.focus(), 150);
 
-    // Also allow Enter to proceed
+    // Enter-to-advance — delay so the current Enter event fully completes first
+    let canAdvance = false;
+    setTimeout(() => { canAdvance = true; }, 100);
     document.addEventListener('keydown', function handler(e) {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && canAdvance) {
         document.removeEventListener('keydown', handler);
-        currentIndex++;
-        showDrill(container);
+        advance();
       }
     });
   }
