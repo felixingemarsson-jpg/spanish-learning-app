@@ -4,9 +4,10 @@
  */
 
 const SRSEngine = (() => {
-  const STORAGE_KEY = 'spanish-srs-cards';
-  const SETTINGS_KEY = 'spanish-srs-settings';
-  const STATS_KEY = 'spanish-srs-stats';
+  // Keys are namespaced per language via Language.storageKey()
+  function STORAGE_KEY() { return Language.storageKey('srs-cards'); }
+  function SETTINGS_KEY() { return Language.storageKey('srs-settings'); }
+  function STATS_KEY() { return Language.storageKey('srs-stats'); }
 
   const scheduler = new FSRS.Scheduler();
 
@@ -17,16 +18,16 @@ const SRSEngine = (() => {
   };
 
   function getSettings() {
-    const stored = localStorage.getItem(SETTINGS_KEY);
+    const stored = localStorage.getItem(SETTINGS_KEY());
     return stored ? { ...defaultSettings, ...JSON.parse(stored) } : { ...defaultSettings };
   }
 
   function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    localStorage.setItem(SETTINGS_KEY(), JSON.stringify(s));
   }
 
   function loadCards() {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY());
     if (!stored) return {};
     const cards = JSON.parse(stored);
     // Revive dates
@@ -38,7 +39,7 @@ const SRSEngine = (() => {
   }
 
   function saveCards(cards) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+    localStorage.setItem(STORAGE_KEY(), JSON.stringify(cards));
   }
 
   function getOrCreateCard(cardId) {
@@ -172,11 +173,11 @@ const SRSEngine = (() => {
     stats.lastReviewDate = day;
     updateStreak(stats);
 
-    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    localStorage.setItem(STATS_KEY(), JSON.stringify(stats));
   }
 
   function getStats() {
-    const stored = localStorage.getItem(STATS_KEY);
+    const stored = localStorage.getItem(STATS_KEY());
     if (!stored) return { daily: {}, streak: 0, longestStreak: 0, lastReviewDate: null };
     return JSON.parse(stored);
   }
@@ -308,7 +309,7 @@ const SRSEngine = (() => {
       }
       saveCards(data.cards);
     }
-    if (data.stats) localStorage.setItem(STATS_KEY, JSON.stringify(data.stats));
+    if (data.stats) localStorage.setItem(STATS_KEY(), JSON.stringify(data.stats));
     if (data.settings) saveSettings(data.settings);
   }
 

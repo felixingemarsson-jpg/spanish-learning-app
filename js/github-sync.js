@@ -4,7 +4,7 @@
  */
 
 const GitHubSync = (() => {
-  const SETTINGS_KEY = 'spanish-github-settings';
+  function SETTINGS_KEY() { return Language.storageKey('github-settings'); }
 
   const defaults = {
     repo: '', // e.g. 'felixingemarsson/spanish-learning-data'
@@ -14,12 +14,12 @@ const GitHubSync = (() => {
   };
 
   function getSettings() {
-    const stored = localStorage.getItem(SETTINGS_KEY);
+    const stored = localStorage.getItem(SETTINGS_KEY());
     return stored ? { ...defaults, ...JSON.parse(stored) } : { ...defaults };
   }
 
   function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    localStorage.setItem(SETTINGS_KEY(), JSON.stringify(s));
   }
 
   function isEnabled() {
@@ -33,7 +33,8 @@ const GitHubSync = (() => {
 
     const progress = SRSEngine.exportProgress();
     const content = btoa(unescape(encodeURIComponent(JSON.stringify(progress, null, 2))));
-    const path = `progress/${s.username}.json`;
+    const lang = Language.getCurrent();
+    const path = `progress/${lang}/${s.username}.json`;
 
     // Check if file exists (to get sha for update)
     let sha = null;
@@ -74,7 +75,8 @@ const GitHubSync = (() => {
     const s = getSettings();
     if (!s.repo || !s.token) throw new Error('GitHub sync not configured');
 
-    const path = `progress/${s.username}.json`;
+    const lang = Language.getCurrent();
+    const path = `progress/${lang}/${s.username}.json`;
     const res = await fetch(`https://api.github.com/repos/${s.repo}/contents/${path}`, {
       headers: { Authorization: `Bearer ${s.token}` },
     });

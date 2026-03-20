@@ -16,14 +16,19 @@ const App = (() => {
       document.body.classList.add('light');
     }
 
-    // On first load, seed notebook cards (A1+A2) as already-known
-    if (!localStorage.getItem('spanish-seeded')) {
-      const a1Ids = DATA.vocabA1.map(v => v.id);
-      const a2Ids = DATA.vocabA2.map(v => v.id);
-      const seeded = SRSEngine.seedKnownCards([...a1Ids, ...a2Ids]);
+    // On first load per language, seed notebook cards as already-known
+    const langConfig = Language.getConfig();
+    const seedKey = Language.storageKey('seeded');
+    if (!localStorage.getItem(seedKey) && langConfig.seedNotebook) {
+      const idsToSeed = [];
+      for (const level of langConfig.seedLevels) {
+        const levelVocab = DATA.getVocabByLevel(level);
+        idsToSeed.push(...levelVocab.map(v => v.id));
+      }
+      const seeded = SRSEngine.seedKnownCards(idsToSeed);
       if (seeded > 0) {
-        localStorage.setItem('spanish-seeded', 'true');
-        console.log(`Seeded ${seeded} notebook cards as already-known`);
+        localStorage.setItem(seedKey, 'true');
+        console.log(`Seeded ${seeded} notebook cards as already-known for ${langConfig.name}`);
       }
     }
 
@@ -56,15 +61,32 @@ const App = (() => {
     window.scrollTo(0, 0);
   }
 
+  function switchLanguage(langCode) {
+    Language.setCurrent(langCode);
+    Language.syncTTSVoice();
+    window.location.reload(); // reload to pick up new data file
+  }
+
   function renderDashboard(container) {
     const allIds = DATA.getAllVocabIds();
     const study = SRSEngine.getStudyQueue(allIds);
     const streak = SRSEngine.getStreak();
     const accuracy = SRSEngine.getAccuracy();
     const todayStats = SRSEngine.getTodayStats();
+    const currentLang = Language.getConfig();
+    const allLangs = Language.getAllLanguages();
 
     container.innerHTML = `
-      <h1 class="page-title" style="text-align:center;font-size:28px;font-weight:800;margin-top:16px;">Spanish</h1>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;margin-bottom:8px;">
+        ${allLangs.map(l => `
+          <button class="btn btn-sm ${l.code === currentLang.code ? '' : 'btn-ghost'}"
+                  onclick="App.switchLanguage('${l.code}')"
+                  style="min-width:120px;">
+            ${l.flag} ${l.name}
+          </button>
+        `).join('')}
+      </div>
+      <h1 class="page-title" style="text-align:center;font-size:28px;font-weight:800;margin-top:8px;">${currentLang.name}</h1>
 
       ${streak > 0 ? `<div class="streak-display"><span class="streak-fire">${streak}</span> day streak</div>` : ''}
 
@@ -96,17 +118,19 @@ const App = (() => {
 
       <div class="section-label" style="margin-top:24px;">Quick Practice</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        ${DATA.verbs && DATA.verbs.length > 0 ? `
         <div class="practice-option" onclick="App.navigate('conjugation')">
           <div class="practice-option-title">Verbs</div>
           <div class="practice-option-desc">${DATA.verbs.length} verbs</div>
-        </div>
+        </div>` : ''}
+        ${DATA.grammarRules && DATA.grammarRules.length > 0 ? `
         <div class="practice-option" onclick="App.navigate('grammar')">
           <div class="practice-option-title">Grammar</div>
           <div class="practice-option-desc">${DATA.grammarRules.length} rules</div>
-        </div>
+        </div>` : ''}
         <div class="practice-option" onclick="App.navigate('translation')">
           <div class="practice-option-title">Translate</div>
-          <div class="practice-option-desc">EN → ES</div>
+          <div class="practice-option-desc">EN → ${currentLang.code === 'russian' ? 'RU' : 'ES'}</div>
         </div>
         <div class="practice-option" onclick="App.navigate('cloze')">
           <div class="practice-option-title">Fill-in</div>
@@ -266,7 +290,7 @@ const App = (() => {
       </div>
 
       <div style="text-align:center;margin-top:32px;font-size:11px;color:var(--text-tertiary);">
-        Spanish A1-A2 &middot; FSRS-5 &middot; Made for a friend
+        Language Learning &middot; FSRS-5
       </div>`;
 
     // ── Event handlers ──
@@ -345,7 +369,7 @@ const App = (() => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `spanish-progress-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `${Language.getCurrent()}-progress-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -373,8 +397,8 @@ const App = (() => {
     // Reset
     document.getElementById('reset-btn').addEventListener('click', () => {
       if (confirm('This will delete ALL progress. Are you sure?')) {
-        localStorage.removeItem('spanish-srs-cards');
-        localStorage.removeItem('spanish-srs-stats');
+        localStorage.removeItem(Language.storageKey('srs-cards'));
+        localStorage.removeItem(Language.storageKey('srs-stats'));
         renderSettings(container);
       }
     });
@@ -391,8 +415,12 @@ const App = (() => {
     return debounced;
   }
 
-  // Boot
-  document.addEventListener('DOMContentLoaded', init);
+  // Boot — init immediately since app.js is loaded dynamically after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
-  return { navigate };
+  return { navigate, switchLanguage };
 })();

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#1a1a2e">
-  <title>Spanish A1-A2</title>
+  <title>Language Learning</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -37,7 +37,7 @@
   </div>
 
   <script src="js/fsrs.js"></script>
-  <script src="js/data.js"></script>
+  <script src="js/language.js"></script>
   <script src="js/tts.js"></script>
   <script src="js/srs-engine.js"></script>
   <script src="js/exercises/flashcards.js"></script>
@@ -47,6 +47,19 @@
   <script src="js/exercises/grammar-quiz.js"></script>
   <script src="js/progress.js"></script>
   <script src="js/github-sync.js"></script>
-  <script src="js/app.js"></script>
+  <!-- Data file loaded dynamically based on selected language -->
+  <script>
+    (function() {
+      var lang = Language.getCurrent();
+      var script = document.createElement('script');
+      script.src = 'js/data-' + lang + '.js';
+      script.onload = function() {
+        var appScript = document.createElement('script');
+        appScript.src = 'js/app.js';
+        document.body.appendChild(appScript);
+      };
+      document.body.appendChild(script);
+    })();
+  </script>
 </body>
 </html>
