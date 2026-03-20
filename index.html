@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Spanish A1-A2</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <nav id="nav">
+      <button class="nav-btn active" data-route="dashboard">
+        <span class="nav-icon">&#9776;</span>
+        <span class="nav-label">Home</span>
+      </button>
+      <button class="nav-btn" data-route="flashcards">
+        <span class="nav-icon">&#9646;</span>
+        <span class="nav-label">Cards</span>
+      </button>
+      <button class="nav-btn" data-route="practice">
+        <span class="nav-icon">&#9998;</span>
+        <span class="nav-label">Practice</span>
+      </button>
+      <button class="nav-btn" data-route="progress">
+        <span class="nav-icon">&#9733;</span>
+        <span class="nav-label">Progress</span>
+      </button>
+      <button class="nav-btn" data-route="settings">
+        <span class="nav-icon">&#9881;</span>
+        <span class="nav-label">Settings</span>
+      </button>
+    </nav>
+    <main id="main"></main>
+  </div>
+
+  <script src="js/fsrs.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/tts.js"></script>
+  <script src="js/srs-engine.js"></script>
+  <script src="js/exercises/flashcards.js"></script>
+  <script src="js/exercises/conjugation.js"></script>
+  <script src="js/exercises/translation.js"></script>
+  <script src="js/exercises/cloze.js"></script>
+  <script src="js/exercises/grammar-quiz.js"></script>
+  <script src="js/progress.js"></script>
+  <script src="js/github-sync.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

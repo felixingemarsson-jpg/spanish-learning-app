@@ -1,0 +1,275 @@
+/*
+ * SRS Engine — Card management + localStorage persistence
+ * Wraps FSRS scheduler with card state tracking.
+ */
+
+const SRSEngine = (() => {
+  const STORAGE_KEY = 'spanish-srs-cards';
+  const SETTINGS_KEY = 'spanish-srs-settings';
+  const STATS_KEY = 'spanish-srs-stats';
+
+  const scheduler = new FSRS.Scheduler();
+
+  const defaultSettings = {
+    newCardsPerDay: 10,
+    requestRetention: 0.9,
+  };
+
+  function getSettings() {
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    return stored ? { ...defaultSettings, ...JSON.parse(stored) } : { ...defaultSettings };
+  }
+
+  function saveSettings(s) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  }
+
+  function loadCards() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return {};
+    const cards = JSON.parse(stored);
+    // Revive dates
+    for (const id in cards) {
+      cards[id].due = new Date(cards[id].due);
+      if (cards[id].last_review) cards[id].last_review = new Date(cards[id].last_review);
+    }
+    return cards;
+  }
+
+  function saveCards(cards) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  }
+
+  function getOrCreateCard(cardId) {
+    const cards = loadCards();
+    if (!cards[cardId]) {
+      cards[cardId] = { ...FSRS.createCard(), id: cardId };
+      saveCards(cards);
+    }
+    return cards[cardId];
+  }
+
+  function reviewCard(cardId, rating) {
+    const cards = loadCards();
+    const card = cards[cardId] || { ...FSRS.createCard(), id: cardId };
+    const now = new Date();
+    const results = scheduler.repeat(card, now);
+    const updated = results[rating].card;
+    updated.id = cardId;
+    cards[cardId] = updated;
+    saveCards(cards);
+
+    // Track stats
+    recordReview(cardId, rating, now);
+
+    return updated;
+  }
+
+  function getSchedulingOptions(cardId) {
+    const cards = loadCards();
+    const card = cards[cardId] || FSRS.createCard();
+    const now = new Date();
+    const results = scheduler.repeat(card, now);
+
+    return {
+      [FSRS.Rating.Again]: {
+        label: 'Again',
+        interval: FSRS.formatInterval(results[FSRS.Rating.Again].scheduledDays),
+      },
+      [FSRS.Rating.Hard]: {
+        label: 'Hard',
+        interval: FSRS.formatInterval(results[FSRS.Rating.Hard].scheduledDays),
+      },
+      [FSRS.Rating.Good]: {
+        label: 'Good',
+        interval: FSRS.formatInterval(results[FSRS.Rating.Good].scheduledDays),
+      },
+      [FSRS.Rating.Easy]: {
+        label: 'Easy',
+        interval: FSRS.formatInterval(results[FSRS.Rating.Easy].scheduledDays),
+      },
+    };
+  }
+
+  function getDueCards(cardType = null) {
+    const cards = loadCards();
+    const now = new Date();
+    const due = [];
+
+    for (const id in cards) {
+      const card = cards[id];
+      if (card.due <= now && card.state !== FSRS.State.New) {
+        if (!cardType || id.startsWith(cardType)) {
+          due.push(card);
+        }
+      }
+    }
+
+    // Sort by most overdue first
+    due.sort((a, b) => a.due - b.due);
+    return due;
+  }
+
+  function getNewCards(allCardIds, cardType = null) {
+    const cards = loadCards();
+    const settings = getSettings();
+    const today = new Date().toDateString();
+
+    // Count new cards introduced today
+    let newToday = 0;
+    for (const id in cards) {
+      const card = cards[id];
+      if (card.reps === 1 && card.last_review && card.last_review.toDateString() === today) {
+        if (!cardType || id.startsWith(cardType)) {
+          newToday++;
+        }
+      }
+    }
+
+    const remaining = settings.newCardsPerDay - newToday;
+    if (remaining <= 0) return [];
+
+    // Find card IDs that haven't been introduced yet
+    const unseen = allCardIds.filter(id => {
+      if (cardType && !id.startsWith(cardType)) return false;
+      return !cards[id] || cards[id].state === FSRS.State.New;
+    });
+
+    return unseen.slice(0, remaining);
+  }
+
+  function getStudyQueue(allCardIds, cardType = null) {
+    const due = getDueCards(cardType);
+    const newCards = getNewCards(allCardIds, cardType);
+
+    // Due cards first, then new cards
+    return {
+      due: due.map(c => c.id),
+      new: newCards,
+      total: due.length + newCards.length,
+    };
+  }
+
+  // Stats tracking
+  function recordReview(cardId, rating, date) {
+    const stats = getStats();
+    const day = date.toISOString().split('T')[0];
+
+    if (!stats.daily[day]) {
+      stats.daily[day] = { reviews: 0, correct: 0, again: 0, hard: 0, good: 0, easy: 0 };
+    }
+
+    stats.daily[day].reviews++;
+    if (rating === FSRS.Rating.Again) stats.daily[day].again++;
+    else if (rating === FSRS.Rating.Hard) stats.daily[day].hard++;
+    else if (rating === FSRS.Rating.Good) { stats.daily[day].good++; stats.daily[day].correct++; }
+    else if (rating === FSRS.Rating.Easy) { stats.daily[day].easy++; stats.daily[day].correct++; }
+
+    // Update streak
+    stats.lastReviewDate = day;
+    updateStreak(stats);
+
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  }
+
+  function getStats() {
+    const stored = localStorage.getItem(STATS_KEY);
+    if (!stored) return { daily: {}, streak: 0, longestStreak: 0, lastReviewDate: null };
+    return JSON.parse(stored);
+  }
+
+  function updateStreak(stats) {
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    if (stats.lastReviewDate === today) {
+      if (!stats._streakCounted) {
+        // Check if yesterday had reviews too
+        if (stats.daily[yesterday]) {
+          stats.streak = (stats.streak || 0) + 1;
+        } else {
+          stats.streak = 1;
+        }
+        stats._streakCounted = today;
+      }
+    }
+
+    if (stats.streak > (stats.longestStreak || 0)) {
+      stats.longestStreak = stats.streak;
+    }
+  }
+
+  function getStreak() {
+    const stats = getStats();
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    // If last review was before yesterday, streak is broken
+    if (stats.lastReviewDate && stats.lastReviewDate !== today && stats.lastReviewDate !== yesterday) {
+      return 0;
+    }
+    return stats.streak || 0;
+  }
+
+  function getTodayStats() {
+    const stats = getStats();
+    const today = new Date().toISOString().split('T')[0];
+    return stats.daily[today] || { reviews: 0, correct: 0, again: 0, hard: 0, good: 0, easy: 0 };
+  }
+
+  function getAccuracy() {
+    const stats = getStats();
+    let total = 0, correct = 0;
+    for (const day in stats.daily) {
+      total += stats.daily[day].reviews;
+      correct += stats.daily[day].correct;
+    }
+    if (total === 0) return 0;
+    return Math.round((correct / total) * 100);
+  }
+
+  function getCardCounts() {
+    const cards = loadCards();
+    const counts = { new: 0, learning: 0, review: 0, total: 0 };
+    for (const id in cards) {
+      counts.total++;
+      const state = cards[id].state;
+      if (state === FSRS.State.New) counts.new++;
+      else if (state === FSRS.State.Learning || state === FSRS.State.Relearning) counts.learning++;
+      else counts.review++;
+    }
+    return counts;
+  }
+
+  // Export for GitHub sync
+  function exportProgress() {
+    return {
+      cards: loadCards(),
+      stats: getStats(),
+      settings: getSettings(),
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  function importProgress(data) {
+    if (data.cards) {
+      // Revive dates
+      for (const id in data.cards) {
+        data.cards[id].due = new Date(data.cards[id].due);
+        if (data.cards[id].last_review) data.cards[id].last_review = new Date(data.cards[id].last_review);
+      }
+      saveCards(data.cards);
+    }
+    if (data.stats) localStorage.setItem(STATS_KEY, JSON.stringify(data.stats));
+    if (data.settings) saveSettings(data.settings);
+  }
+
+  return {
+    getSettings, saveSettings,
+    getOrCreateCard, reviewCard,
+    getSchedulingOptions, getDueCards, getNewCards, getStudyQueue,
+    getStats, getTodayStats, getStreak, getAccuracy, getCardCounts,
+    exportProgress, importProgress,
+    loadCards, saveCards,
+  };
+})();
