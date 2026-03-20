@@ -29,7 +29,17 @@ const TTS = (() => {
     return s.enabled && s.apiKey;
   }
 
-  async function speak(text) {
+  function getSpeedForCard(cardId) {
+    if (!cardId) return 1.0;
+    const cards = typeof SRSEngine !== 'undefined' ? SRSEngine.loadCards() : {};
+    const card = cards[cardId];
+    if (!card) return 0.85; // new card — slow
+    if (card.stability > 15) return 1.15; // mature — fast
+    if (card.state === FSRS.State.Review) return 1.0; // normal review
+    return 0.85; // learning — slow
+  }
+
+  async function speak(text, options = {}) {
     const s = getSettings();
     if (!s.apiKey) {
       console.warn('TTS: No API key configured');
@@ -62,6 +72,12 @@ const TTS = (() => {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       currentAudio = new Audio(url);
+
+      // Apply playback speed
+      const speed = options.speed || 1.0;
+      if (speed !== 1.0) {
+        currentAudio.playbackRate = speed;
+      }
 
       return new Promise((resolve) => {
         currentAudio.onended = () => {
@@ -137,5 +153,5 @@ const TTS = (() => {
     return btn;
   }
 
-  return { getSettings, saveSettings, isEnabled, speak, stop, isPlaying, renderButton };
+  return { getSettings, saveSettings, isEnabled, speak, stop, isPlaying, renderButton, getSpeedForCard };
 })();

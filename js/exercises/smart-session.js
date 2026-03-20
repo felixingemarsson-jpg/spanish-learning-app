@@ -26,11 +26,16 @@ const SmartSession = (() => {
 
     // Build queue with exercise type assignments
     const weights = getWeights();
-    queue = cardIds.map(id => ({
-      cardId: id,
-      card: DATA.getVocabCard(id),
-      exerciseType: pickExerciseType(weights),
-    }));
+    const srsCards = SRSEngine.loadCards();
+    queue = cardIds.map(id => {
+      const card = DATA.getVocabCard(id);
+      const srsCard = srsCards[id];
+      const isNew = !srsCard || srsCard.state === FSRS.State.New;
+      // Context-first: new cards with chunks get a context exercise first
+      const hasChunks = card && card.chunks && card.chunks.length > 0;
+      const exerciseType = (isNew && hasChunks) ? 'contextFirst' : pickExerciseType(weights);
+      return { cardId: id, card, exerciseType };
+    });
 
     currentIndex = 0;
     sessionStats = { reviewed: 0, correct: 0, types: {} };
@@ -103,6 +108,7 @@ const SmartSession = (() => {
       dictation: 'Dictation',
       wordOrder: 'Word Order',
       reading: 'Reading',
+      contextFirst: 'Context',
     };
     return labels[type] || type;
   }
@@ -123,6 +129,9 @@ const SmartSession = (() => {
 
     const typeBadge = getTypeBadge(item.exerciseType);
 
+    // Destroy previous timer
+    if (typeof Timer !== 'undefined') Timer.destroy();
+
     container.innerHTML = `
       <div class="session-counter">
         ${currentIndex + 1} / ${queue.length}
@@ -131,6 +140,24 @@ const SmartSession = (() => {
       <div id="smart-exercise"></div>`;
 
     const exerciseContainer = document.getElementById('smart-exercise');
+
+    // Start timer if active
+    if (typeof Timer !== 'undefined' && Timer.isActive()) {
+      Timer.render(container);
+      Timer.start(Timer.getSeconds(), () => {
+        // Timeout — rate as Again and auto-advance
+        if (item.card) {
+          SRSEngine.reviewCard(item.card.id, FSRS.Rating.Again);
+          recordResult(false, item.exerciseType);
+        }
+        exerciseContainer.innerHTML = `
+          <div class="feedback wrong">
+            <div class="feedback-label">Time's up!</div>
+            <div class="feedback-answer">${item.card ? item.card.spanish : ''}</div>
+          </div>`;
+        setTimeout(() => { currentIndex++; showCard(container); }, 2000);
+      });
+    }
 
     switch (item.exerciseType) {
       case 'flashcard':
@@ -149,8 +176,10 @@ const SmartSession = (() => {
         renderWordOrder(exerciseContainer, item);
         break;
       case 'reading':
-        // For reading, advance immediately (reading handles its own flow)
         renderReading(exerciseContainer, item);
+        break;
+      case 'contextFirst':
+        renderContextFirst(exerciseContainer, item);
         break;
     }
   }
@@ -189,6 +218,8 @@ const SmartSession = (() => {
       const userAnswer = input.value.trim();
       if (!userAnswer) return;
       answered = true;
+
+      if (typeof Timer !== 'undefined') Timer.stop();
 
       const grade = SRSEngine.gradeAnswer(userAnswer, card.spanish);
       SRSEngine.reviewCard(card.id, grade.rating);
@@ -551,6 +582,92 @@ const SmartSession = (() => {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }
 
+  function renderContextFirst(container, item) {
+    const card = item.card;
+    if (!card || !card.chunks || card.chunks.length === 0) {
+      renderFlashcard(container, item);
+      return;
+    }
+
+    // Pick a chunk to blank in the English translation
+    const targetChunk = card.chunks[Math.floor(Math.random() * card.chunks.length)];
+    // Find the English word that corresponds — use the full english with the chunk blanked
+    const blankEnglish = card.english.replace(/\S+/g, (word, idx) => {
+      // Simple approach: blank one key word from the english
+      return word;
+    });
+
+    container.innerHTML = `
+      <div class="card">
+        <div class="section-label">Guess from Context</div>
+        <div style="font-size:18px;line-height:1.7;margin-bottom:12px;">
+          ${highlightChunk(card.spanish, targetChunk)}
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">
+          ${card.english}
+        </div>
+        <div><span class="badge">${card.theme}</span></div>
+      </div>
+      <div class="card">
+        <div style="font-size:15px;color:var(--text-secondary);margin-bottom:8px;">
+          What does <strong style="color:var(--accent);">${targetChunk}</strong> mean?
+        </div>
+      </div>
+      <div class="input-row">
+        <input class="input" type="text" id="smart-ctx-input" placeholder="Type your guess..."
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button class="btn" id="smart-ctx-submit">Check</button>
+      </div>
+      <div id="smart-ctx-feedback" style="margin-top:12px;"></div>`;
+
+    const input = document.getElementById('smart-ctx-input');
+    input.focus();
+    let submitted = false;
+
+    const submit = () => {
+      if (submitted) return;
+      const userAnswer = input.value.trim();
+      if (!userAnswer) return;
+      submitted = true;
+
+      // Stop timer
+      if (typeof Timer !== 'undefined') Timer.stop();
+
+      // For context-first, we mark the card as "seen once" (Learning state)
+      // Any reasonable guess counts — we rate Good for close, Hard for far
+      SRSEngine.reviewCard(card.id, FSRS.Rating.Good);
+      recordResult(true, 'contextFirst');
+
+      container.querySelector('.input-row').remove();
+      const fb = document.getElementById('smart-ctx-feedback');
+      fb.innerHTML = `
+        <div class="feedback correct">
+          <div class="feedback-label">Word learned!</div>
+          <div class="feedback-answer">${targetChunk}</div>
+          <div class="feedback-explanation">Full phrase: ${card.spanish}<br>Meaning: ${card.english}</div>
+        </div>`;
+
+      const extras = document.createElement('div');
+      extras.style.cssText = 'margin-top:8px;display:flex;gap:8px;justify-content:center;';
+      fb.appendChild(extras);
+      TTS.renderButton(card.spanish, extras);
+
+      addNextButton(fb, container);
+    };
+
+    document.getElementById('smart-ctx-submit').addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  }
+
+  function highlightChunk(sentence, chunk) {
+    const idx = sentence.toLowerCase().indexOf(chunk.toLowerCase());
+    if (idx === -1) return sentence;
+    const before = sentence.substring(0, idx);
+    const match = sentence.substring(idx, idx + chunk.length);
+    const after = sentence.substring(idx + chunk.length);
+    return `${before}<strong style="color:var(--accent);text-decoration:underline;">${match}</strong>${after}`;
+  }
+
   // ── Shared helpers ──
 
   function showGradeFeedback(el, grade, userAnswer, correct, notes) {
@@ -589,6 +706,9 @@ const SmartSession = (() => {
   }
 
   function addNextButton(feedbackEl, exerciseContainer) {
+    // Stop timer when exercise is answered
+    if (typeof Timer !== 'undefined') Timer.stop();
+
     const mainContainer = exerciseContainer.closest('#smart-exercise')
       ? exerciseContainer.closest('#smart-exercise').parentElement
       : document.getElementById('main');

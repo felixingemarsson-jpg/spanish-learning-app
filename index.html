@@ -51,6 +51,9 @@
   <script src="js/exercises/reading.js"></script>
   <script src="js/exercises/word-order.js"></script>
   <script src="js/exercises/pronunciation.js"></script>
+  <script src="js/timer.js"></script>
+  <script src="js/audio-effects.js"></script>
+  <script src="js/exercises/scenario.js"></script>
   <script src="js/exercises/smart-session.js"></script>
   <script src="js/progress.js"></script>
   <script src="js/github-sync.js"></script>
@@ -69,9 +72,15 @@
           if (typeof DATA_READINGS !== 'undefined' && DATA) {
             DATA.readings = DATA_READINGS;
           }
-          var appScript = document.createElement('script');
-          appScript.src = 'js/app.js';
-          document.body.appendChild(appScript);
+          // Load scenario data (optional)
+          var scenarioScript = document.createElement('script');
+          scenarioScript.src = 'js/data-scenarios-' + lang + '.js';
+          scenarioScript.onload = scenarioScript.onerror = function() {
+            var appScript = document.createElement('script');
+            appScript.src = 'js/app.js';
+            document.body.appendChild(appScript);
+          };
+          document.body.appendChild(scenarioScript);
         };
         document.body.appendChild(readingsScript);
       };

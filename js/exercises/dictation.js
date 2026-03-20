@@ -81,8 +81,14 @@ const Dictation = (() => {
     // Render replay button
     TTS.renderButton(item.spanish, document.getElementById('tts-container'));
 
-    // Auto-play on show
-    TTS.speak(item.spanish);
+    // Start background noise for dictation if enabled
+    if (typeof AudioEffects !== 'undefined' && AudioEffects.isEnabled()) {
+      AudioEffects.startNoise(0.25);
+    }
+
+    // Auto-play with speed variation
+    const speed = TTS.getSpeedForCard(item.id);
+    TTS.speak(item.spanish, { speed });
 
     const input = document.getElementById('dict-input');
     input.focus();
@@ -100,6 +106,8 @@ const Dictation = (() => {
   }
 
   function checkAnswer(container, item, userAnswer) {
+    // Stop background noise on answer
+    if (typeof AudioEffects !== 'undefined') AudioEffects.stopNoise();
     const grade = SRSEngine.gradeAnswer(userAnswer, item.spanish);
     SRSEngine.reviewCard(item.id, grade.rating);
 

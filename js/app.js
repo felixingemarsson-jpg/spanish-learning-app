@@ -58,6 +58,7 @@ const App = (() => {
       case 'reading': typeof Reading !== 'undefined' ? Reading.render(main) : renderPracticeMenu(main); break;
       case 'word-order': typeof WordOrder !== 'undefined' ? WordOrder.render(main) : renderPracticeMenu(main); break;
       case 'smart-session': typeof SmartSession !== 'undefined' ? SmartSession.render(main) : Flashcards.render(main); break;
+      case 'scenarios': typeof Scenario !== 'undefined' ? Scenario.renderList(main) : renderPracticeMenu(main); break;
       default: renderDashboard(main);
     }
 
@@ -206,6 +207,12 @@ const App = (() => {
       <div class="practice-option" onclick="App.navigate('grammar')">
         <div class="practice-option-title">Grammar</div>
         <div class="practice-option-desc">Type the correct form — ser/estar, por/para, tenses, and more.</div>
+      </div>` : ''}
+
+      ${typeof Scenario !== 'undefined' && Scenario.getScenarios().length > 0 ? `
+      <div class="practice-option" onclick="App.navigate('scenarios')">
+        <div class="practice-option-title">Interactive Scenarios</div>
+        <div class="practice-option-desc">Practice real conversations — order food, check into hotels, and more.</div>
       </div>` : ''}`;
   }
 
@@ -232,6 +239,29 @@ const App = (() => {
           <span class="setting-label">Desired retention</span>
           <span class="setting-value">${Math.round(srsSettings.requestRetention * 100)}%</span>
         </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px;">Exercise Timer</div>
+      <div class="card">
+        <div class="setting-row">
+          <span class="setting-label">Timer mode</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm ${typeof Timer !== 'undefined' && Timer.getMode() === 'off' ? '' : 'btn-ghost'}" id="timer-off">Off</button>
+            <button class="btn btn-sm ${typeof Timer !== 'undefined' && Timer.getMode() === 'relaxed' ? '' : 'btn-ghost'}" id="timer-relaxed">30s</button>
+            <button class="btn btn-sm ${typeof Timer !== 'undefined' && Timer.getMode() === 'challenge' ? '' : 'btn-ghost'}" id="timer-challenge">15s</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px;">Listening</div>
+      <div class="card">
+        <div class="setting-row">
+          <span class="setting-label">Realistic listening</span>
+          <button class="toggle ${typeof AudioEffects !== 'undefined' && AudioEffects.isEnabled() ? 'on' : ''}" id="noise-toggle">
+            <div class="toggle-thumb"></div>
+          </button>
+        </div>
+        <div style="padding:8px 0 0;font-size:12px;color:var(--text-tertiary);">Background noise in dictation + speed varies by card maturity</div>
       </div>
 
       <div class="section-label" style="margin-top:24px;">Appearance</div>
@@ -337,6 +367,28 @@ const App = (() => {
       this.classList.toggle('on');
       localStorage.setItem('spanish-theme', document.body.classList.contains('light') ? 'light' : 'dark');
     });
+
+    // Timer mode buttons
+    ['off', 'relaxed', 'challenge'].forEach(mode => {
+      const btn = document.getElementById('timer-' + mode);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          if (typeof Timer !== 'undefined') Timer.setMode(mode);
+          renderSettings(container); // re-render to update active state
+        });
+      }
+    });
+
+    // Realistic listening toggle
+    const noiseToggle = document.getElementById('noise-toggle');
+    if (noiseToggle) {
+      noiseToggle.addEventListener('click', function () {
+        if (typeof AudioEffects !== 'undefined') {
+          AudioEffects.setEnabled(!AudioEffects.isEnabled());
+          this.classList.toggle('on');
+        }
+      });
+    }
 
     // TTS toggle + settings
     document.getElementById('tts-toggle').addEventListener('click', function () {

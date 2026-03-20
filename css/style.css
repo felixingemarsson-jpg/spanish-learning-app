@@ -601,3 +601,133 @@ body {
 }
 .theme-chip:hover { border-color: var(--accent); color: var(--accent); }
 .theme-chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* ── Timer Bar ── */
+.timer-bar-container {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: var(--radius-full);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.timer-bar-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: var(--radius-full);
+  transition: width 0.1s linear;
+}
+.timer-bar-fill.timer-amber {
+  background: var(--accent);
+}
+.timer-bar-fill.timer-red {
+  background: var(--error);
+}
+
+/* ── Scenario UI ── */
+.scenario-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  margin-bottom: 8px;
+}
+.scenario-video-card {
+  padding: 0;
+  overflow: hidden;
+}
+.scenario-video {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.scenario-text-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  background: var(--bg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.scenario-avatar {
+  font-size: 64px;
+  opacity: 0.3;
+}
+.scenario-subtitle {
+  padding: 16px 20px;
+}
+.scenario-subtitle-target {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.scenario-subtitle-en {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Scenario transitions */
+.scenario-fade-in {
+  animation: scenarioFadeIn 0.3s ease-in;
+}
+@keyframes scenarioFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Input slide-in below frozen video */
+.scenario-input-slide-in {
+  animation: scenarioSlideIn 0.25s ease-out;
+}
+@keyframes scenarioSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Response bar — sits below the video card */
+.scenario-response-bar {
+  margin-top: 12px;
+}
+.scenario-prompt {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.scenario-hint {
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+/* Mic recording state */
+.scenario-mic-active {
+  color: var(--error) !important;
+  border-color: var(--error) !important;
+}
+
+/* Play overlay for autoplay-blocked */
+.scenario-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  cursor: pointer;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.scenario-play-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.scenario-video-card {
+  position: relative;
+}
