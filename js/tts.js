@@ -54,7 +54,9 @@ const TTS = (() => {
 
       if (!res.ok) {
         console.error('TTS API error:', res.status);
-        return false;
+        if (res.status === 401) return { error: 'Invalid API key' };
+        if (res.status === 429) return { error: 'Quota reached' };
+        return { error: 'TTS unavailable' };
       }
 
       const blob = await res.blob();
@@ -76,7 +78,7 @@ const TTS = (() => {
       });
     } catch (err) {
       console.error('TTS error:', err);
-      return false;
+      return { error: 'Network error' };
     }
   }
 
@@ -91,19 +93,20 @@ const TTS = (() => {
     return currentAudio && !currentAudio.paused;
   }
 
+  function speakerIcon(waves) {
+    const base = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/>';
+    const w1 = '<path d="M15.54 8.46a5 5 0 010 7.07"/>';
+    const w2 = '<path d="M19.07 4.93a10 10 0 010 14.14"/>';
+    return base + (waves >= 1 ? w1 : '') + (waves >= 2 ? w2 : '') + '</svg>';
+  }
+
   // Render a TTS button for a Spanish text
   function renderButton(text, container) {
     if (!isEnabled()) return null;
 
     const btn = document.createElement('button');
     btn.className = 'tts-btn';
-    btn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-        <path d="M15.54 8.46a5 5 0 010 7.07"/>
-        <path d="M19.07 4.93a10 10 0 010 14.14"/>
-      </svg>
-      Listen`;
+    btn.innerHTML = speakerIcon(2) + ' Listen';
 
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -113,21 +116,21 @@ const TTS = (() => {
         return;
       }
       btn.classList.add('playing');
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-          <path d="M15.54 8.46a5 5 0 010 7.07"/>
-        </svg>
-        Playing...`;
-      await speak(text);
+      btn.innerHTML = speakerIcon(1) + ' Playing...';
+      const result = await speak(text);
       btn.classList.remove('playing');
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-          <path d="M15.54 8.46a5 5 0 010 7.07"/>
-          <path d="M19.07 4.93a10 10 0 010 14.14"/>
-        </svg>
-        Listen`;
+      if (result && result.error) {
+        btn.innerHTML = speakerIcon(0) + ` ${result.error}`;
+        btn.style.color = 'var(--error)';
+        btn.style.borderColor = 'var(--error)';
+        setTimeout(() => {
+          btn.innerHTML = speakerIcon(2) + ' Listen';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }, 2500);
+      } else {
+        btn.innerHTML = speakerIcon(2) + ' Listen';
+      }
     });
 
     if (container) container.appendChild(btn);
