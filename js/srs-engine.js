@@ -12,6 +12,7 @@ const SRSEngine = (() => {
 
   const defaultSettings = {
     newCardsPerDay: 10,
+    maxReviewsPerDay: 100, // cap reviews so staggered notebook cards don't overwhelm
     requestRetention: 0.9,
   };
 
@@ -107,7 +108,9 @@ const SRSEngine = (() => {
 
     // Sort by most overdue first
     due.sort((a, b) => a.due - b.due);
-    return due;
+    // Cap at daily review limit
+    const settings = getSettings();
+    return due.slice(0, settings.maxReviewsPerDay);
   }
 
   function getNewCards(allCardIds, cardType = null) {
@@ -241,6 +244,51 @@ const SRSEngine = (() => {
     return counts;
   }
 
+  // Seed notebook cards as "studied but untested"
+  // These are phrases the learner wrote in notebooks — they've seen them but
+  // never done retrieval practice. We set them as Review state with LOW stability
+  // so they come up for a real retrieval test soon, but stagger due dates over
+  // 14 days so he's not hit with 1000+ reviews on day 1.
+  //
+  // Science rationale:
+  // - Retrieval practice effect: first typed recall IS learning, not just review
+  // - FSRS self-calibrates: Easy→long interval, Again→relearn. One test reveals truth.
+  // - Staggering prevents review pile-up and cognitive overload
+  // - Low stability (2-4) means cards come back quickly if he struggles
+  function seedKnownCards(cardIds) {
+    const cards = loadCards();
+    let seeded = 0;
+    const now = new Date();
+    const STAGGER_DAYS = 14; // spread reviews over 2 weeks
+    const DAILY_BATCH = Math.ceil(cardIds.length / STAGGER_DAYS);
+
+    for (let i = 0; i < cardIds.length; i++) {
+      const id = cardIds[i];
+      if (cards[id]) continue; // already exists, don't overwrite
+
+      // Stagger: batch i gets due on day floor(i/DAILY_BATCH)
+      const dayOffset = Math.floor(i / DAILY_BATCH);
+      // Add slight randomness within each day (0-12 hours) to avoid clumping
+      const hourJitter = Math.random() * 12 * 3600000;
+
+      cards[id] = {
+        id,
+        due: new Date(now.getTime() + dayOffset * 86400000 + hourJitter),
+        stability: 2.5,    // low — first retrieval test will calibrate
+        difficulty: 5.0,    // neutral — FSRS will adjust after first review
+        elapsed_days: 0,
+        scheduled_days: dayOffset || 1,
+        reps: 1,            // treated as seen-once, not brand-new
+        lapses: 0,
+        state: FSRS.State.Review,
+        last_review: new Date(now.getTime() - 86400000), // "reviewed yesterday"
+      };
+      seeded++;
+    }
+    if (seeded > 0) saveCards(cards);
+    return seeded;
+  }
+
   // Export for GitHub sync
   function exportProgress() {
     return {
@@ -266,7 +314,7 @@ const SRSEngine = (() => {
 
   return {
     getSettings, saveSettings,
-    getOrCreateCard, reviewCard,
+    getOrCreateCard, reviewCard, seedKnownCards,
     getSchedulingOptions, getDueCards, getNewCards, getStudyQueue,
     getStats, getTodayStats, getStreak, getAccuracy, getCardCounts,
     exportProgress, importProgress,

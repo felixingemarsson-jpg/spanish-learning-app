@@ -16,6 +16,17 @@ const App = (() => {
       document.body.classList.add('light');
     }
 
+    // On first load, seed notebook cards (A1+A2) as already-known
+    if (!localStorage.getItem('spanish-seeded')) {
+      const a1Ids = DATA.vocabA1.map(v => v.id);
+      const a2Ids = DATA.vocabA2.map(v => v.id);
+      const seeded = SRSEngine.seedKnownCards([...a1Ids, ...a2Ids]);
+      if (seeded > 0) {
+        localStorage.setItem('spanish-seeded', 'true');
+        console.log(`Seeded ${seeded} notebook cards as already-known`);
+      }
+    }
+
     navigate('dashboard');
   }
 
@@ -53,7 +64,7 @@ const App = (() => {
     const todayStats = SRSEngine.getTodayStats();
 
     container.innerHTML = `
-      <h1 class="page-title" style="text-align:center;font-size:28px;font-weight:800;margin-top:16px;">Spanish A1-A2</h1>
+      <h1 class="page-title" style="text-align:center;font-size:28px;font-weight:800;margin-top:16px;">Spanish</h1>
 
       ${streak > 0 ? `<div class="streak-display"><span class="streak-fire">${streak}</span> day streak</div>` : ''}
 
